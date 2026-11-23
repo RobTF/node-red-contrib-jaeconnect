@@ -1,0 +1,337 @@
+[
+    {
+        "id": "c0",
+        "type": "comment",
+        "name": "Live events: one message per event (pick the car and the events in the node)",
+        "info": "",
+        "x": 300,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "e1",
+        "type": "jaeconnect-event",
+        "name": "",
+        "account": "a1c0ffee00000001",
+        "vehicle": "",
+        "types": [
+            "vehicle.charging_started",
+            "vehicle.charging_stopped",
+            "vehicle.charging_completed",
+            "vehicle.unlocked"
+        ],
+        "x": 150,
+        "y": 120,
+        "wires": [
+            [
+                "s1"
+            ]
+        ]
+    },
+    {
+        "id": "s1",
+        "type": "switch",
+        "name": "which event?",
+        "property": "topic",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "vehicle.charging_completed",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "vehicle.unlocked",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 3,
+        "x": 350,
+        "y": 120,
+        "wires": [
+            [
+                "d1"
+            ],
+            [
+                "d2"
+            ],
+            [
+                "d3"
+            ]
+        ]
+    },
+    {
+        "id": "d1",
+        "type": "debug",
+        "name": "charged",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload.battery_percent",
+        "targetType": "msg",
+        "x": 560,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "d2",
+        "type": "debug",
+        "name": "unlocked",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 560,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "d3",
+        "type": "debug",
+        "name": "other events",
+        "active": true,
+        "tosidebar": true,
+        "complete": "true",
+        "targetType": "full",
+        "x": 570,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "c1",
+        "type": "comment",
+        "name": "Read the status: every weekday at 07:00, warn if the battery is low",
+        "info": "",
+        "x": 290,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "i1",
+        "type": "inject",
+        "name": "07:00 weekdays",
+        "props": [],
+        "repeat": "",
+        "crontab": "00 07 * * 1,2,3,4,5",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 150,
+        "y": 260,
+        "wires": [
+            [
+                "st1"
+            ]
+        ]
+    },
+    {
+        "id": "st1",
+        "type": "jaeconnect-status",
+        "name": "",
+        "account": "a1c0ffee00000001",
+        "vehicle": "",
+        "what": "status",
+        "refresh": false,
+        "x": 350,
+        "y": 260,
+        "wires": [
+            [
+                "f1"
+            ]
+        ]
+    },
+    {
+        "id": "f1",
+        "type": "function",
+        "name": "below 50%?",
+        "func": "const percent = msg.payload.battery_percent;\nif (percent === null || percent >= 50) {\n    return null;\n}\nmsg.payload = `The car is at ${percent}%. Plug it in?`;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 530,
+        "y": 260,
+        "wires": [
+            [
+                "d4"
+            ]
+        ]
+    },
+    {
+        "id": "d4",
+        "type": "debug",
+        "name": "low battery",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 710,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "c2",
+        "type": "comment",
+        "name": "Commands: click the buttons. Failures go to the catch node with msg.problem.code",
+        "info": "",
+        "x": 330,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "i2",
+        "type": "inject",
+        "name": "lock",
+        "props": [],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 150,
+        "y": 380,
+        "wires": [
+            [
+                "cmd1"
+            ]
+        ]
+    },
+    {
+        "id": "cmd1",
+        "type": "jaeconnect-command",
+        "name": "",
+        "account": "a1c0ffee00000001",
+        "vehicle": "",
+        "command": "lock",
+        "temperature": "",
+        "duration": "",
+        "seat": "",
+        "level": "",
+        "x": 430,
+        "y": 380,
+        "wires": [
+            [
+                "d5"
+            ]
+        ]
+    },
+    {
+        "id": "i3",
+        "type": "inject",
+        "name": "warm up: 21 °C for 15 min",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"temperature_c\":21,\"duration_minutes\":15}",
+        "payloadType": "json",
+        "x": 170,
+        "y": 440,
+        "wires": [
+            [
+                "cmd2"
+            ]
+        ]
+    },
+    {
+        "id": "cmd2",
+        "type": "jaeconnect-command",
+        "name": "",
+        "account": "a1c0ffee00000001",
+        "vehicle": "",
+        "command": "start_climate",
+        "temperature": "",
+        "duration": "",
+        "seat": "",
+        "level": "",
+        "x": 430,
+        "y": 440,
+        "wires": [
+            [
+                "d5"
+            ]
+        ]
+    },
+    {
+        "id": "d5",
+        "type": "debug",
+        "name": "done",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 650,
+        "y": 410,
+        "wires": []
+    },
+    {
+        "id": "cat1",
+        "type": "catch",
+        "name": "",
+        "scope": [
+            "cmd1",
+            "cmd2",
+            "st1"
+        ],
+        "uncaught": false,
+        "x": 140,
+        "y": 500,
+        "wires": [
+            [
+                "f2"
+            ]
+        ]
+    },
+    {
+        "id": "f2",
+        "type": "change",
+        "name": "why?",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "problem",
+                "tot": "msg"
+            }
+        ],
+        "x": 310,
+        "y": 500,
+        "wires": [
+            [
+                "d6"
+            ]
+        ]
+    },
+    {
+        "id": "d6",
+        "type": "debug",
+        "name": "failed",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 470,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "a1c0ffee00000001",
+        "type": "jaeconnect-account",
+        "name": "My jaeconnect",
+        "baseUrl": "https://jaeconnect.com"
+    }
+]

@@ -1,0 +1,169 @@
+{
+  "limits": {
+    "min_temperature_c": 16,
+    "max_temperature_c": 30,
+    "min_duration_minutes": 1,
+    "max_duration_minutes": 30,
+    "max_seat_level": 3,
+    "seats": [
+      "driver",
+      "passenger",
+      "rear_left",
+      "rear_right"
+    ]
+  },
+  "commands": [
+    {
+      "name": "lock",
+      "description": "Locks the doors.",
+      "options": []
+    },
+    {
+      "name": "unlock",
+      "description": "Unlocks the doors.",
+      "options": []
+    },
+    {
+      "name": "flash_and_honk",
+      "description": "Flashes the lights and sounds the horn, to spot the car nearby (some cars do only one).",
+      "options": []
+    },
+    {
+      "name": "open_boot",
+      "description": "Opens the power tailgate.",
+      "options": []
+    },
+    {
+      "name": "close_boot",
+      "description": "Closes the power tailgate.",
+      "options": []
+    },
+    {
+      "name": "open_windows",
+      "description": "Opens every window fully.",
+      "options": []
+    },
+    {
+      "name": "vent_windows",
+      "description": "Opens every window a little, to air the car.",
+      "options": []
+    },
+    {
+      "name": "close_windows",
+      "description": "Closes every window.",
+      "options": []
+    },
+    {
+      "name": "open_sunroof",
+      "description": "Slides the sunroof fully open.",
+      "options": []
+    },
+    {
+      "name": "vent_sunroof",
+      "description": "Tilts the sunroof open to air the car.",
+      "options": []
+    },
+    {
+      "name": "close_sunroof",
+      "description": "Closes the sunroof.",
+      "options": []
+    },
+    {
+      "name": "start_climate",
+      "description": "Starts heating or cooling the cabin.",
+      "options": [
+        "temperature_c",
+        "duration_minutes"
+      ]
+    },
+    {
+      "name": "stop_climate",
+      "description": "Stops the climate control.",
+      "options": []
+    },
+    {
+      "name": "start_engine",
+      "description": "Starts the engine remotely, for cars that allow it.",
+      "options": [
+        "duration_minutes"
+      ]
+    },
+    {
+      "name": "stop_engine",
+      "description": "Stops a remotely started engine.",
+      "options": []
+    },
+    {
+      "name": "steering_wheel_heat_on",
+      "description": "Turns the steering wheel heating on.",
+      "options": []
+    },
+    {
+      "name": "steering_wheel_heat_off",
+      "description": "Turns the steering wheel heating off.",
+      "options": []
+    },
+    {
+      "name": "front_defrost_on",
+      "description": "Turns the windscreen demister (or heated windscreen) on.",
+      "options": [
+        "duration_minutes"
+      ]
+    },
+    {
+      "name": "front_defrost_off",
+      "description": "Turns the windscreen demister off.",
+      "options": []
+    },
+    {
+      "name": "rear_defrost_on",
+      "description": "Turns the rear window demister on.",
+      "options": [
+        "duration_minutes"
+      ]
+    },
+    {
+      "name": "rear_defrost_off",
+      "description": "Turns the rear window demister off.",
+      "options": []
+    },
+    {
+      "name": "seat_heat",
+      "description": "Sets one seat's heating.",
+      "options": [
+        "seat",
+        "level",
+        "duration_minutes"
+      ]
+    },
+    {
+      "name": "seat_vent",
+      "description": "Sets one seat's ventilation (cooling).",
+      "options": [
+        "seat",
+        "level",
+        "duration_minutes"
+      ]
+    },
+    {
+      "name": "start_charging",
+      "description": "Starts charging a plugged-in car now, ignoring its charging schedule.",
+      "options": []
+    },
+    {
+      "name": "stop_charging",
+      "description": "Stops charging.",
+      "options": []
+    },
+    {
+      "name": "locate",
+      "description": "Asks the car to report where it is; read it with `GET /v1/vehicles/{id}/location`.",
+      "options": []
+    },
+    {
+      "name": "wake",
+      "description": "Brings a sleeping car online. Other commands wake the car themselves; use this to get fresh readings.",
+      "options": []
+    }
+  ]
+}

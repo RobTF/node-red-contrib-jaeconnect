@@ -1,0 +1,553 @@
+<script type="text/javascript">
+    (function () {
+        const COLOUR = "#9ED8C3";
+        const ICON = "jaeconnect.svg";
+
+        /**
+         * Every event jaeconnect sends to tokens and apps, grouped as in the developer docs.
+         */
+        const EVENT_TYPES = [
+            ["vehicle.status_changed", "Status changed (battery, locks, doors, climate…)"],
+            ["vehicle.charging_started", "Charging started"],
+            ["vehicle.charging_stopped", "Charging stopped"],
+            ["vehicle.charging_completed", "Charging completed"],
+            ["vehicle.locked", "Locked"],
+            ["vehicle.unlocked", "Unlocked"],
+            ["vehicle.location_changed", "Location changed"],
+            ["vehicle.geofence_entered", "Arrived at a geo-fence"],
+            ["vehicle.geofence_exited", "Left a geo-fence"],
+            ["command.completed", "A command finished"],
+            ["billing.payment_failed", "A payment failed"],
+            ["billing.subscription_paused", "Subscription paused"],
+            ["billing.access_ended", "Access ended"],
+            ["billing.access_restored", "Access restored"],
+        ];
+
+        /**
+         * Asks the runtime for the account's cars and the commands jaeconnect takes.
+         */
+        const loadCatalog = (accountId) => {
+            const account = accountId ? RED.nodes.node(accountId) : undefined;
+            if (!account) {
+                return Promise.resolve({ vehicles: null, vehicles_error: "Choose an account first.", commands: [], limits: null });
+            }
+
+            const body = { account: accountId, baseUrl: account.baseUrl };
+            if (account.credentials && account.credentials.token) {
+                body.token = account.credentials.token;
+            }
+
+            return new Promise((resolve) => {
+                $.ajax({ url: "jaeconnect/catalog", type: "POST", contentType: "application/json", data: JSON.stringify(body), dataType: "json" })
+                    .done(resolve)
+                    .fail((xhr) => resolve({ vehicles: null, vehicles_error: (xhr.responseJSON && xhr.responseJSON.error) || "Couldn't ask jaeconnect.", commands: [], limits: null }));
+            });
+        };
+
+        /**
+         * Fills a car picker, keeping the current choice even when the list can't be loaded.
+         */
+        const fillVehicles = ($select, $hint, catalog, current, blankLabel) => {
+            $select.empty();
+            $("<option>").val("").text(blankLabel).appendTo($select);
+            const list = catalog.vehicles || [];
+            list.forEach((v) => {
+                $("<option>").val(v.id).text(`${v.name}${v.vin_last4 ? ` (…${v.vin_last4})` : ""}`).appendTo($select);
+            });
+            if (current && !list.some((v) => v.id === current)) {
+                $("<option>").val(current).text(`${current} (not in the list)`).appendTo($select);
+            }
+
+            $select.val(current || "");
+            $hint.text(catalog.vehicles_error || (list.length === 0 ? "This token can't see any cars." : ""));
+        };
+
+        /**
+         * Wires a car picker to the account picker: it reloads when the account changes. Calls back with the catalog.
+         */
+        const wireVehicles = (node, blankLabel, onCatalog) => {
+            const $account = $("#node-input-account");
+            const $select = $("#node-input-vehicle");
+            const $hint = $("#jaeconnect-vehicle-hint");
+            let current = node.vehicle;
+            const reload = () => {
+                $hint.text("Loading cars…");
+                loadCatalog($account.val()).then((catalog) => {
+                    fillVehicles($select, $hint, catalog, current, blankLabel);
+                    if (onCatalog) {
+                        onCatalog(catalog);
+                    }
+                });
+            };
+
+            $select.on("change", () => {
+                current = $select.val();
+            });
+            $account.on("change", reload);
+            $("#jaeconnect-vehicle-refresh").on("click", (e) => {
+                e.preventDefault();
+                reload();
+            });
+            reload();
+        };
+
+        RED.nodes.registerType("jaeconnect-account", {
+            category: "config",
+            paletteLabel: "jaeconnect account",
+            defaults: {
+                name: { value: "" },
+                baseUrl: { value: "https://jaeconnect.com", required: true, validate: RED.validators.regex(/^https?:\/\/\S+$/) },
+            },
+            credentials: {
+                token: { type: "password" },
+            },
+            label: function () {
+                return this.name || "jaeconnect";
+            },
+            oneditprepare: function () {
+                const node = this;
+                $("#jaeconnect-account-check").on("click", (e) => {
+                    e.preventDefault();
+                    const $result = $("#jaeconnect-account-result").text("Checking…");
+                    const body = { account: node.id, baseUrl: $("#node-config-input-baseUrl").val() };
+                    const token = $("#node-config-input-token").val();
+                    if (token) {
+                        body.token = token;
+                    }
+
+                    $.ajax({ url: "jaeconnect/catalog", type: "POST", contentType: "application/json", data: JSON.stringify(body), dataType: "json" })
+                        .done((catalog) => {
+                            if (catalog.vehicles_error) {
+                                $result.text(catalog.vehicles_error);
+                            } else {
+                                const names = catalog.vehicles.map((v) => v.name).join(", ");
+                                $result.text(catalog.vehicles.length === 0 ? "Works, but this token can't see any cars." : `Works. Cars: ${names}.`);
+                            }
+                        })
+                        .fail((xhr) => $result.text((xhr.responseJSON && xhr.responseJSON.error) || "Couldn't ask jaeconnect."));
+                });
+            },
+        });
+
+        RED.nodes.registerType("jaeconnect-event", {
+            category: "jaeconnect",
+            paletteLabel: "car event",
+            color: COLOUR,
+            icon: ICON,
+            inputs: 0,
+            outputs: 1,
+            defaults: {
+                name: { value: "" },
+                account: { value: "", type: "jaeconnect-account", required: true },
+                vehicle: { value: "" },
+                types: { value: [] },
+            },
+            outputLabels: ["event"],
+            label: function () {
+                if (this.name) {
+                    return this.name;
+                }
+
+                const types = this.types || [];
+                if (types.length === 1) {
+                    return types[0];
+                }
+
+                return types.length > 1 ? `${types.length} car events` : "car events";
+            },
+            labelStyle: function () {
+                return this.name ? "node_label_italic" : "";
+            },
+            oneditprepare: function () {
+                wireVehicles(this, "Every car");
+                const chosen = new Set(this.types || []);
+                const $list = $("#jaeconnect-event-types");
+                EVENT_TYPES.forEach(([type, label]) => {
+                    const $row = $("<label>").addClass("jaeconnect-check");
+                    $("<input type='checkbox'>").val(type).prop("checked", chosen.has(type)).appendTo($row);
+                    $("<span>").text(` ${label} `).appendTo($row);
+                    $("<code>").text(type).appendTo($row);
+                    $row.appendTo($list);
+                });
+            },
+            oneditsave: function () {
+                this.types = $("#jaeconnect-event-types input:checked").map((_, el) => el.value).get();
+            },
+        });
+
+        RED.nodes.registerType("jaeconnect-status", {
+            category: "jaeconnect",
+            paletteLabel: "car status",
+            color: COLOUR,
+            icon: ICON,
+            inputs: 1,
+            outputs: 1,
+            defaults: {
+                name: { value: "" },
+                account: { value: "", type: "jaeconnect-account", required: true },
+                vehicle: { value: "" },
+                what: { value: "status" },
+                refresh: { value: false },
+            },
+            label: function () {
+                const labels = { status: "car status", location: "car location", car: "car details", cars: "all cars", schedules: "car schedules" };
+                return this.name || labels[this.what] || "car status";
+            },
+            labelStyle: function () {
+                return this.name ? "node_label_italic" : "";
+            },
+            oneditprepare: function () {
+                wireVehicles(this, "From msg.vehicle_id (or the only car)");
+                const update = () => {
+                    const what = $("#node-input-what").val();
+                    $(".jaeconnect-vehicle-row").toggle(what !== "cars");
+                    $(".jaeconnect-refresh-row").toggle(what === "status" || what === "location");
+                };
+                $("#node-input-what").on("change", update);
+                update();
+            },
+        });
+
+        RED.nodes.registerType("jaeconnect-command", {
+            category: "jaeconnect",
+            paletteLabel: "car command",
+            color: COLOUR,
+            icon: ICON,
+            align: "right",
+            inputs: 1,
+            outputs: 1,
+            defaults: {
+                name: { value: "" },
+                account: { value: "", type: "jaeconnect-account", required: true },
+                vehicle: { value: "" },
+                command: { value: "" },
+                temperature: { value: "" },
+                duration: { value: "" },
+                seat: { value: "" },
+                level: { value: "" },
+            },
+            label: function () {
+                return this.name || this.command || "car command";
+            },
+            labelStyle: function () {
+                return this.name ? "node_label_italic" : "";
+            },
+            oneditprepare: function () {
+                const node = this;
+                const $command = $("#node-input-command");
+                let catalog = { commands: [], vehicles: [] };
+                let current = node.command;
+
+                const showOptions = () => {
+                    const info = catalog.commands.find((c) => c.name === $command.val());
+                    const options = info ? info.options : ["temperature_c", "duration_minutes", "seat", "level"];
+                    $(".jaeconnect-option-temperature_c").toggle(options.includes("temperature_c"));
+                    $(".jaeconnect-option-duration_minutes").toggle(options.includes("duration_minutes"));
+                    $(".jaeconnect-option-seat").toggle(options.includes("seat"));
+                    $(".jaeconnect-option-level").toggle(options.includes("level"));
+                    $("#jaeconnect-command-description").text(info ? info.description : "msg.command chooses the command; these options apply when it takes them.");
+                };
+
+                const fillCommands = () => {
+                    const vehicle = (catalog.vehicles || []).find((v) => v.id === $("#node-input-vehicle").val());
+                    $command.empty();
+                    $("<option>").val("").text("From msg.command").appendTo($command);
+                    catalog.commands.forEach((c) => {
+                        const unsupported = vehicle && vehicle.supported_commands.length > 0 && !vehicle.supported_commands.includes(c.name);
+                        $("<option>").val(c.name).text(`${c.name}${unsupported ? " (not on this car)" : ""}`).appendTo($command);
+                    });
+                    if (current && !catalog.commands.some((c) => c.name === current)) {
+                        $("<option>").val(current).text(current).appendTo($command);
+                    }
+
+                    $command.val(current || "");
+                    showOptions();
+                };
+
+                $command.on("change", () => {
+                    current = $command.val();
+                    showOptions();
+                });
+                $("#node-input-vehicle").on("change", fillCommands);
+
+                wireVehicles(node, "From msg.vehicle_id (or the only car)", (loaded) => {
+                    catalog = loaded;
+                    if (loaded.limits) {
+                        $("#node-input-temperature").attr({ min: loaded.limits.min_temperature_c, max: loaded.limits.max_temperature_c });
+                        $("#node-input-duration").attr({ min: loaded.limits.min_duration_minutes, max: loaded.limits.max_duration_minutes });
+                        $("#node-input-level").attr({ min: 0, max: loaded.limits.max_seat_level });
+                    }
+
+                    fillCommands();
+                });
+            },
+        });
+    })();
+</script>
+
+<style>
+    .jaeconnect-hint {
+        display: block;
+        margin: 4px 0 0 104px;
+        font-size: 0.9em;
+        color: var(--red-ui-secondary-text-color, #777);
+    }
+
+    #jaeconnect-event-types label.jaeconnect-check {
+        display: block;
+        width: auto;
+        margin: 2px 0;
+        text-align: left;
+        white-space: nowrap;
+        font-weight: normal;
+        cursor: pointer;
+    }
+
+    #jaeconnect-event-types .jaeconnect-check input {
+        width: auto;
+        margin: 0 4px 0 0;
+        vertical-align: middle;
+    }
+
+    .jaeconnect-check code {
+        font-size: 0.85em;
+        color: var(--red-ui-secondary-text-color, #777);
+    }
+
+    #jaeconnect-event-types {
+        margin-left: 104px;
+    }
+</style>
+
+<!-- The account -->
+
+<script type="text/html" data-template-name="jaeconnect-account">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="jaeconnect" />
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-token"><i class="fa fa-key"></i> API token</label>
+        <input type="password" id="node-config-input-token" placeholder="jc_pat_…" />
+        <span class="jaeconnect-hint">Create one on jaeconnect under <b>Apps and tokens</b>. Give it control only if you'll send commands.</span>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-baseUrl"><i class="fa fa-globe"></i> Address</label>
+        <input type="text" id="node-config-input-baseUrl" placeholder="https://jaeconnect.com" />
+    </div>
+    <div class="form-row">
+        <label></label>
+        <button type="button" class="red-ui-button" id="jaeconnect-account-check">Check the token</button>
+        <span id="jaeconnect-account-result" class="jaeconnect-hint" style="margin-left: 104px"></span>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="jaeconnect-account">
+    <p>Your jaeconnect account: the API token the other jaeconnect nodes use, and the address of the service.</p>
+    <h3>Details</h3>
+    <dl class="message-properties">
+        <dt>API token <span class="property-type">string</span></dt>
+        <dd>
+            A personal access token from jaeconnect (<b>Apps and tokens</b>, starting <code>jc_pat_</code>). Its scopes decide what the nodes can do:
+            read for events and status, location for positions and geo-fences, control for commands. You can limit it to one car.
+        </dd>
+        <dt>Address <span class="property-type">string</span></dt>
+        <dd>Leave it as <code>https://jaeconnect.com</code> unless you've been given another.</dd>
+    </dl>
+    <p>
+        All the <b>car event</b> nodes using this account share one connection to jaeconnect. It's opened from Node-RED, so it works on a home network
+        with no public address, and it picks up where it left off after a drop (events from the last 15 minutes are kept).
+    </p>
+    <p>Node-RED stores the token encrypted, apart from your flows, and leaves it out when you export them.</p>
+</script>
+
+<!-- Events -->
+
+<script type="text/html" data-template-name="jaeconnect-event">
+    <div class="form-row">
+        <label for="node-input-account"><i class="fa fa-user"></i> Account</label>
+        <input type="text" id="node-input-account" />
+    </div>
+    <div class="form-row">
+        <label for="node-input-vehicle"><i class="fa fa-car"></i> Car</label>
+        <select id="node-input-vehicle" style="width: 60%"></select>
+        <button type="button" class="red-ui-button" id="jaeconnect-vehicle-refresh" title="Load the cars again"><i class="fa fa-refresh"></i></button>
+        <span id="jaeconnect-vehicle-hint" class="jaeconnect-hint"></span>
+    </div>
+    <div class="form-row">
+        <label><i class="fa fa-filter"></i> Events</label>
+        <span class="jaeconnect-hint" style="margin: 0; display: inline">None ticked: every event.</span>
+        <div id="jaeconnect-event-types"></div>
+    </div>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name" />
+    </div>
+</script>
+
+<script type="text/html" data-help-name="jaeconnect-event">
+    <p>Sends a message whenever something happens to your cars: charging starts or stops, the car is locked or unlocked, its status or location changes, it arrives at or leaves a geo-fence, or a command finishes.</p>
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd>The event type, e.g. <code>vehicle.charging_started</code>. Use a <b>switch</b> node on it to route events.</dd>
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>
+            What the event carries: the car's status for status, charging and lock events (<code>battery_percent</code>, <code>charging.state</code>,
+            <code>locked</code>…), the position for <code>vehicle.location_changed</code>, the geo-fence for arrivals and departures, the command for
+            <code>command.completed</code>.
+        </dd>
+        <dt>vehicle_id <span class="property-type">string | null</span></dt>
+        <dd>The car. <code>null</code> for <code>billing.*</code> events, which apply to the whole account.</dd>
+        <dt>event <span class="property-type">object</span></dt>
+        <dd>The whole event: <code>id</code>, <code>type</code>, <code>created_at</code>, <code>vehicle_id</code> and <code>data</code>.</dd>
+    </dl>
+    <h3>Details</h3>
+    <p>Choose a car and tick the events you want, or leave them for every car and every event.</p>
+    <p>
+        <code>vehicle.status_changed</code> fires when something you'd notice changes (battery percent, charging, locks, doors, boot, windows, sunroof,
+        engine, climate, seats, a tyre warning), not for drifting values like range or cabin temperature.
+    </p>
+    <p>Location and geo-fence events need a token with location access, and location sharing turned on for the car in jaeconnect.</p>
+    <p>The status under the node shows the connection: green when connected, yellow while it reconnects, red if jaeconnect refused the token.</p>
+</script>
+
+<!-- Status -->
+
+<script type="text/html" data-template-name="jaeconnect-status">
+    <div class="form-row">
+        <label for="node-input-account"><i class="fa fa-user"></i> Account</label>
+        <input type="text" id="node-input-account" />
+    </div>
+    <div class="form-row">
+        <label for="node-input-what"><i class="fa fa-list"></i> Read</label>
+        <select id="node-input-what">
+            <option value="status">Status (battery, charging, locks, climate…)</option>
+            <option value="location">Location</option>
+            <option value="car">Car details (what it supports)</option>
+            <option value="schedules">Charging and departure schedules</option>
+            <option value="cars">All cars on the account</option>
+        </select>
+    </div>
+    <div class="form-row jaeconnect-vehicle-row">
+        <label for="node-input-vehicle"><i class="fa fa-car"></i> Car</label>
+        <select id="node-input-vehicle" style="width: 60%"></select>
+        <button type="button" class="red-ui-button" id="jaeconnect-vehicle-refresh" title="Load the cars again"><i class="fa fa-refresh"></i></button>
+        <span id="jaeconnect-vehicle-hint" class="jaeconnect-hint"></span>
+    </div>
+    <div class="form-row jaeconnect-refresh-row">
+        <label for="node-input-refresh"><i class="fa fa-bolt"></i> Fresh</label>
+        <input type="checkbox" id="node-input-refresh" style="width: auto; vertical-align: top" />
+        <span>Ask the car service now instead of using the last reading (up to a minute old)</span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name" />
+    </div>
+</script>
+
+<script type="text/html" data-help-name="jaeconnect-status">
+    <p>Reads a car's status, location, details or schedules (or lists the account's cars) when a message arrives.</p>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">vehicle_id <span class="property-type">string</span></dt>
+        <dd>The car, when the node doesn't name one. With neither, a token that sees only one car uses it.</dd>
+        <dt class="optional">refresh <span class="property-type">boolean</span></dt>
+        <dd>Overrides the node's <b>Fresh</b> setting.</dd>
+    </dl>
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object | array</span></dt>
+        <dd>
+            What jaeconnect returned. Status has <code>battery_percent</code>, <code>range_km</code>, <code>fuel_percent</code>, <code>charging</code>
+            (<code>state</code>, <code>power_kw</code>, <code>minutes_to_full</code>), <code>locked</code>, <code>doors_open</code>,
+            <code>windows_position</code>, <code>climate</code>, <code>seats</code>, <code>tyres</code> and <code>odometer_km</code>. Any field can be
+            <code>null</code> when the car doesn't report it.
+        </dd>
+        <dt>vehicle_id <span class="property-type">string</span></dt>
+        <dd>The car that was read.</dd>
+    </dl>
+    <h3>Errors</h3>
+    <p>
+        Failures go to a <b>catch</b> node, with <code>msg.problem.code</code> saying why, e.g. <code>location_sharing_off</code>,
+        <code>subscription_required</code> or <code>scope_missing</code>.
+    </p>
+</script>
+
+<!-- Commands -->
+
+<script type="text/html" data-template-name="jaeconnect-command">
+    <div class="form-row">
+        <label for="node-input-account"><i class="fa fa-user"></i> Account</label>
+        <input type="text" id="node-input-account" />
+    </div>
+    <div class="form-row">
+        <label for="node-input-vehicle"><i class="fa fa-car"></i> Car</label>
+        <select id="node-input-vehicle" style="width: 60%"></select>
+        <button type="button" class="red-ui-button" id="jaeconnect-vehicle-refresh" title="Load the cars again"><i class="fa fa-refresh"></i></button>
+        <span id="jaeconnect-vehicle-hint" class="jaeconnect-hint"></span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-command"><i class="fa fa-play"></i> Command</label>
+        <select id="node-input-command" style="width: 70%"></select>
+        <span id="jaeconnect-command-description" class="jaeconnect-hint"></span>
+    </div>
+    <div class="form-row jaeconnect-option-temperature_c">
+        <label for="node-input-temperature"><i class="fa fa-thermometer-half"></i> Temperature</label>
+        <input type="number" id="node-input-temperature" step="0.5" placeholder="The car's default" style="width: 160px" /> °C
+    </div>
+    <div class="form-row jaeconnect-option-duration_minutes">
+        <label for="node-input-duration"><i class="fa fa-clock-o"></i> Run for</label>
+        <input type="number" id="node-input-duration" placeholder="The car's default" style="width: 160px" /> minutes
+    </div>
+    <div class="form-row jaeconnect-option-seat">
+        <label for="node-input-seat"><i class="fa fa-user-circle"></i> Seat</label>
+        <select id="node-input-seat">
+            <option value="">From msg.payload.seat</option>
+            <option value="driver">Driver</option>
+            <option value="passenger">Passenger</option>
+            <option value="rear_left">Rear left</option>
+            <option value="rear_right">Rear right</option>
+        </select>
+    </div>
+    <div class="form-row jaeconnect-option-level">
+        <label for="node-input-level"><i class="fa fa-signal"></i> Level</label>
+        <input type="number" id="node-input-level" placeholder="0 is off" style="width: 160px" />
+    </div>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name" />
+    </div>
+</script>
+
+<script type="text/html" data-help-name="jaeconnect-command">
+    <p>Sends a command to a car when a message arrives (lock, unlock, climate, charging, windows, seat heating…) and waits for the car's answer.</p>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">command <span class="property-type">string</span></dt>
+        <dd>The command, when the node is set to <b>From msg.command</b>, e.g. <code>lock</code> or <code>start_climate</code>.</dd>
+        <dt class="optional">vehicle_id <span class="property-type">string</span></dt>
+        <dd>The car, when the node doesn't name one. With neither, a token that sees only one car uses it.</dd>
+        <dt class="optional">payload <span class="property-type">object</span></dt>
+        <dd>
+            Options that override the node's: <code>temperature_c</code>, <code>duration_minutes</code>, <code>seat</code> (<code>driver</code>,
+            <code>passenger</code>, <code>rear_left</code>, <code>rear_right</code>) and <code>level</code> (0 is off, up to 3). Only the options the
+            command takes are sent.
+        </dd>
+    </dl>
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>jaeconnect's record of the command: <code>id</code>, <code>command</code>, <code>status</code> (<code>succeeded</code>), <code>requested_at</code> and <code>completed_at</code>.</dd>
+    </dl>
+    <h3>Details</h3>
+    <p>
+        The command can take up to a minute, longer if the car has to wake first. It's recorded in the car's activity in jaeconnect under your
+        token's name. The token needs control access to the car.
+    </p>
+    <p>
+        A command that doesn't work goes to a <b>catch</b> node instead of the output, with <code>msg.problem.code</code> saying why, e.g.
+        <code>vehicle_unreachable</code>, <code>command_not_supported</code> or <code>close_sunroof_first</code> (some sunroofs must close between
+        vented and open).
+    </p>
+</script>
