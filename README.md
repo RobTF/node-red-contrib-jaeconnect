@@ -3,6 +3,8 @@
 [Node-RED](https://nodered.org) nodes for [jaeconnect](https://jaeconnect.com): react to what your car does, read
 its status, and send it commands from your flows.
 
+![Node-RED with three jaeconnect flows: lock the car two minutes after it's unlocked, send a message when charging finishes, and warm the car on cold weekday mornings](https://jaeconnect.com/images/node-red-flows.png)
+
 | Node | What it does |
 |---|---|
 | **car event** | A message for each event: charging started, stopped or completed, locked, unlocked, status changed, location changed, arrived at or left a geo-fence, a command finished. |
