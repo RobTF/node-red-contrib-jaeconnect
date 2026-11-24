@@ -11,7 +11,15 @@
     "charging",
     "home automation"
   ],
-  "homepage": "https://jaeconnect.com/developers/node-red",
+  "homepage": "https://github.com/RobTF/node-red-contrib-jaeconnect#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RobTF/node-red-contrib-jaeconnect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RobTF/node-red-contrib-jaeconnect/issues",
+    "email": "support@jaeconnect.com"
+  },
   "license": "MIT",
   "author": "jaeconnect",
   "engines": {

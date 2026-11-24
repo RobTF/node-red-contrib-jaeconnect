@@ -73,7 +73,13 @@ A failed call or command goes to a **catch** node rather than the output. `msg.p
 | `scope_missing` | The token doesn't have the access the node needs. |
 | `subscription_required` | The account has no active subscription. |
 
-The [developer docs](https://jaeconnect.com/developers) list every command, event and error.
+The developer docs list every command, event and error: [sign in to jaeconnect](https://jaeconnect.com/login), then open
+**Developers**.
+
+## Issues
+
+Report a problem or ask for a feature in [Issues](https://github.com/RobTF/node-red-contrib-jaeconnect/issues), or
+email support@jaeconnect.com.
 
 ## Licence
 
