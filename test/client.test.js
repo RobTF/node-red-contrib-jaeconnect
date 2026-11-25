@@ -8,8 +8,18 @@ const { JaeConnectError, normaliseBaseUrl, request } = require("../lib/client");
 const respond = (status, body) => async () => new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
 
 test("normalises the address", () => {
-    assert.equal(normaliseBaseUrl(""), "https://jaeconnect.com");
+    assert.equal(normaliseBaseUrl(""), "https://www.jaeconnect.com");
+    assert.equal(normaliseBaseUrl(undefined), "https://www.jaeconnect.com");
     assert.equal(normaliseBaseUrl(" http://localhost:5180/ "), "http://localhost:5180");
+    assert.equal(normaliseBaseUrl("https://www.jaeconnect.com/"), "https://www.jaeconnect.com");
+});
+
+test("sends the bare domain, the old default, to www so the token survives", () => {
+    for (const typed of ["https://jaeconnect.com", "https://jaeconnect.com/", "jaeconnect.com", "http://jaeconnect.com", " HTTPS://JaeConnect.com// "]) {
+        assert.equal(normaliseBaseUrl(typed), "https://www.jaeconnect.com", typed);
+    }
+    assert.equal(normaliseBaseUrl("https://jaeconnect.com.example.org"), "https://jaeconnect.com.example.org");
+    assert.equal(normaliseBaseUrl("https://staging.jaeconnect.com"), "https://staging.jaeconnect.com");
 });
 
 test("returns the JSON and sends the token", async () => {

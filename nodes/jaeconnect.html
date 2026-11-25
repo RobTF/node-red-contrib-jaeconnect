@@ -96,7 +96,7 @@
             paletteLabel: "jaeconnect account",
             defaults: {
                 name: { value: "" },
-                baseUrl: { value: "https://jaeconnect.com", required: true, validate: RED.validators.regex(/^https?:\/\/\S+$/) },
+                baseUrl: { value: "https://www.jaeconnect.com", required: true, validate: RED.validators.regex(/^https?:\/\/\S+$/) },
             },
             credentials: {
                 token: { type: "password" },
@@ -333,7 +333,7 @@
     </div>
     <div class="form-row">
         <label for="node-config-input-baseUrl"><i class="fa fa-globe"></i> Address</label>
-        <input type="text" id="node-config-input-baseUrl" placeholder="https://jaeconnect.com" />
+        <input type="text" id="node-config-input-baseUrl" placeholder="https://www.jaeconnect.com" />
     </div>
     <div class="form-row">
         <label></label>
@@ -352,7 +352,7 @@
             read for events and status, location for positions and geo-fences, control for commands. You can limit it to one car.
         </dd>
         <dt>Address <span class="property-type">string</span></dt>
-        <dd>Leave it as <code>https://jaeconnect.com</code> unless you've been given another.</dd>
+        <dd>Leave it as <code>https://www.jaeconnect.com</code> unless you've been given another.</dd>
     </dl>
     <p>
         All the <b>car event</b> nodes using this account share one connection to jaeconnect. It's opened from Node-RED, so it works on a home network
